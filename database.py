@@ -33,7 +33,7 @@ class FalkorDBClient:
         self.graph.query(query, params)
 
 # Utility function
-def save_project_to_both(db_session, name: str, description: str = None):
+def save_project_to_both(db_session, name: str, description: str = None, technologies: list = None):
     # 1. Save to Postgres
     new_project = Project(name=name, description=description)
     db_session.add(new_project)
@@ -43,5 +43,25 @@ def save_project_to_both(db_session, name: str, description: str = None):
     # 2. Save to FalkorDB
     falkor_client = FalkorDBClient()
     falkor_client.create_project_node(new_project.id, new_project.name)
+
+    # 3. Link technologies if provided
+    if technologies:
+        for tech in technologies:
+            tech = tech.strip()
+            if not tech:
+                continue
+            # Merge Technology node
+            falkor_client.graph.query(
+                "MERGE (t:Technology {name: $name})", 
+                {"name": tech}
+            )
+            # Create USES relationship
+            falkor_client.graph.query(
+                """
+                MATCH (p:Project {id: $pid}), (t:Technology {name: $tname})
+                MERGE (p)-[:USES]->(t)
+                """,
+                {"pid": str(new_project.id), "tname": tech}
+            )
 
     return new_project
